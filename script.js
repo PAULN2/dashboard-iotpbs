@@ -3,7 +3,7 @@
 // =====================================================
 
 // PEGA AQUÍ TU PROFILE TOKEN (Read Only)
-const TAGO_TOKEN = "33e4dec9-056a-42bc-83e3-6ed4a540e00b";
+const TAGO_TOKEN = "fdaffbf5-1a1f-40e1-9ba8-f35faf3139c6";
 
 // URL de la API de TagoIO
 const API_URL = "https://api.tago.io/data?query=last_value";
