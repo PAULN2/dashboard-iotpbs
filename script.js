@@ -1,21 +1,24 @@
-
 // ==========================================================
 // DASHBOARD IoT - script.js
-// Compatible con Cloudflare Worker + TagoIO
-// No requiere cambios en tu CSS ni en tu diseño actual.
+// ESP32 + GPS NEO-6M + BME680 + TagoIO
+// Datos obtenidos mediante Cloudflare Worker
 // ==========================================================
 
+// URL de tu Cloudflare Worker
 const API_URL = "https://tago-worker.paulmartinez1991.workers.dev/";
+
+// Intervalo de actualización (ms)
 const UPDATE_INTERVAL = 5000;
 
-let map = null;
-let marker = null;
+// Variables globales del mapa
+let map;
+let marker;
 
+// ==========================================================
+// INICIALIZAR MAPA
+// ==========================================================
 function inicializarMapa() {
-  const mapElement = document.getElementById("map");
-  if (!mapElement || typeof L === "undefined") return;
-
-  map = L.map("map").setView([-2.90055, -79.00453], 13);
+  map = L.map("map").setView([-2.90055, -79.00453], 13); // Cuenca, Ecuador
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
@@ -24,99 +27,93 @@ function inicializarMapa() {
 
   marker = L.marker([-2.90055, -79.00453]).addTo(map);
   marker.bindPopup("Esperando datos del GPS...");
-
-  setTimeout(() => map.invalidateSize(), 500);
 }
 
+// ==========================================================
+// ACTUALIZAR INDICADOR DE ESTADO
+// ==========================================================
 function actualizarEstado(texto, conectado = true) {
   const status = document.getElementById("status");
+
   if (!status) return;
 
   status.textContent = texto;
-  status.style.color = conectado ? "#00ff99" : "#ff5555";
+
+  if (conectado) {
+    status.style.color = "#00ff99";
+  } else {
+    status.style.color = "#ff5555";
+  }
 }
 
-function esNumeroValido(valor) {
-  return valor !== undefined &&
-         valor !== null &&
-         valor !== "" &&
-         !isNaN(Number(valor));
-}
-
-function formatearNumero(valor, decimales = 1) {
-  if (!esNumeroValido(valor)) return null;
-  return Number(valor).toFixed(decimales);
-}
-
+// ==========================================================
+// ACTUALIZAR ELEMENTO HTML
+// ==========================================================
 function setValor(id, valor, sufijo = "") {
   const el = document.getElementById(id);
   if (!el) return;
 
-  if (valor === undefined || valor === null || valor === "" || valor === "NaN") {
+  if (valor === undefined || valor === null || valor === "") {
     el.textContent = "--";
   } else {
     el.textContent = `${valor}${sufijo}`;
   }
 }
 
+// ==========================================================
+// CONVERTIR ARRAY DE TAGO A OBJETO
+// ==========================================================
 function convertirDatos(array) {
   const datos = {};
 
-  if (!Array.isArray(array)) return datos;
-
-  array.forEach((item) => {
-    if (!item || !item.variable) return;
-
+  array.forEach(item => {
     if (item.variable === "location") {
-      if (item.location && esNumeroValido(item.location.lat) && esNumeroValido(item.location.lng)) {
-        datos.location = {
-          lat: Number(item.location.lat),
-          lng: Number(item.location.lng)
-        };
-      } else if (
-        item.value &&
-        typeof item.value === "object" &&
-        esNumeroValido(item.value.lat) &&
-        esNumeroValido(item.value.lng)
-      ) {
-        datos.location = {
-          lat: Number(item.value.lat),
-          lng: Number(item.value.lng)
-        };
+      // Puede venir como:
+      // item.location = {lat, lng}
+      // o item.value = {lat, lng}
+      if (item.location) {
+        datos.location = item.location;
+      } else if (item.value && typeof item.value === "object") {
+        datos.location = item.value;
       }
-      return;
+    } else {
+      datos[item.variable] = item.value;
     }
-
-    datos[item.variable] = item.value;
   });
 
   return datos;
 }
 
-function actualizarMapa(lat, lng) {
-  if (!map || !marker) return;
-  if (!esNumeroValido(lat) || !esNumeroValido(lng)) return;
+// ==========================================================
+// ACTUALIZAR MAPA
+// ==========================================================
+function actualizarMapa(location) {
+  if (!location) return;
 
-  lat = Number(lat);
-  lng = Number(lng);
+  const lat = parseFloat(location.lat);
+  const lng = parseFloat(location.lng);
+
+  if (isNaN(lat) || isNaN(lng)) return;
 
   marker.setLatLng([lat, lng]);
-  marker.bindPopup(
-    `<b>Ubicación GPS</b><br>Latitud: ${lat.toFixed(6)}<br>Longitud: ${lng.toFixed(6)}`
-  );
 
   map.setView([lat, lng], 17);
-  setTimeout(() => map.invalidateSize(), 100);
+
+  marker.bindPopup(`
+    <b>Ubicación GPS</b><br>
+    Latitud: ${lat.toFixed(6)}<br>
+    Longitud: ${lng.toFixed(6)}
+  `);
 }
 
+// ==========================================================
+// CARGAR DATOS DESDE CLOUDLFARE WORKER
+// ==========================================================
 async function cargarDatos() {
   try {
     actualizarEstado("Conectando con TagoIO...", true);
 
-    const response = await fetch(API_URL, {
-      method: "GET",
-      cache: "no-store"
-    });
+    const response = await fetch(API_URL);
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
@@ -124,75 +121,52 @@ async function cargarDatos() {
 
     const raw = await response.json();
 
-    let arrayDatos = [];
-    if (Array.isArray(raw)) {
-      arrayDatos = raw;
-    } else if (raw.result && Array.isArray(raw.result)) {
-      arrayDatos = raw.result;
-    } else {
-      throw new Error("Formato de respuesta no válido");
+    if (!Array.isArray(raw) || raw.length === 0) {
+      throw new Error("No se recibieron datos");
     }
 
-    const datos = convertirDatos(arrayDatos);
-    console.log("Datos procesados:", datos);
+    console.log("Datos recibidos:", raw);
 
-    // GPS - Latitud y Longitud
-    let lat = null;
-    let lng = null;
+    const datos = convertirDatos(raw);
 
-    if (datos.location && esNumeroValido(datos.location.lat) && esNumeroValido(datos.location.lng)) {
-      lat = Number(datos.location.lat);
-      lng = Number(datos.location.lng);
-    } else if (esNumeroValido(datos.latitud) && esNumeroValido(datos.longitud)) {
-      lat = Number(datos.latitud);
-      lng = Number(datos.longitud);
-    }
+    // ------------------------------------------------------
+    // Actualizar tarjetas
+    // ------------------------------------------------------
+    setValor("temperatura", Number(datos.temperatura).toFixed(1), " °C");
+    setValor("humedad", Number(datos.humedad).toFixed(1), " %");
+    setValor("presion", Number(datos.presion).toFixed(1), " hPa");
+    setValor("gas", Number(datos.gas_resist).toFixed(1), " kΩ");
+    setValor("altitudBME", Number(datos.altitud_bme).toFixed(1), " m");
 
-    if (lat !== null && lng !== null) {
-      setValor("latitud", lat.toFixed(6));
-      setValor("longitud", lng.toFixed(6));
-      actualizarMapa(lat, lng);
-    } else {
-      setValor("latitud", "--");
-      setValor("longitud", "--");
-    }
-
-    // GPS
+    setValor("altitudGPS", Number(datos.altitud_gps).toFixed(1), " m");
+    setValor("velocidad", Number(datos.velocidad).toFixed(2), " km/h");
     setValor("satelites", datos.satelites);
-    setValor("hdop", formatearNumero(datos.hdop, 2));
-    setValor("altitudGPS", formatearNumero(datos.altitud_gps, 1), " m");
-    setValor("velocidad", formatearNumero(datos.velocidad, 2), " km/h");
-
-    // BME680
-    setValor("temperatura", formatearNumero(datos.temperatura, 1), " °C");
-    setValor("humedad", formatearNumero(datos.humedad, 1), " %");
-    setValor("presion", formatearNumero(datos.presion, 1), " hPa");
-    setValor("gas", formatearNumero(datos.gas_resist, 1), " kΩ");
-    setValor("altitudBME", formatearNumero(datos.altitud_bme, 1), " m");
-
-    // Hora
+    setValor("hdop", Number(datos.hdop).toFixed(2));
     setValor("hora", datos.hora_ecuador);
 
-    actualizarEstado("Conectado a TagoIO", true);
+    // Latitud y longitud
+    if (datos.location) {
+      const lat = Number(datos.location.lat);
+      const lng = Number(datos.location.lng);
 
-    const subtitle = document.querySelector(".subtitle");
-    if (subtitle) {
-      subtitle.textContent =
-        "ESP32 + GPS NEO-6M + BME680 + TagoIO | Última actualización: " +
-        new Date().toLocaleTimeString(); 
+      setValor("latitud", lat.toFixed(6));
+      setValor("longitud", lng.toFixed(6));
+
+      actualizarMapa(datos.location);
     }
+
+    actualizarEstado("Conectado a TagoIO", true);
   } catch (error) {
     console.error("Error:", error);
     actualizarEstado("Error de conexión con TagoIO", false);
   }
 }
 
+// ==========================================================
+// INICIALIZACIÓN
+// ==========================================================
 document.addEventListener("DOMContentLoaded", () => {
   inicializarMapa();
   cargarDatos();
   setInterval(cargarDatos, UPDATE_INTERVAL);
-
-  window.addEventListener("resize", () => {
-    if (map) map.invalidateSize();
-  });
 });
