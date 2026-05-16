@@ -1,97 +1,77 @@
-// CONFIGURACIÓ
+// =====================================================
+// CONFIGURACIÓN
+// =====================================================
+
+// PEGA AQUÍ TU PROFILE TOKEN (Read Only)
 const TAGO_TOKEN = "33e4dec9-056a-42bc-83e3-6ed4a540e00b";
 
-// Región US (coincide con tu ESP32)
-const TAGO_API = "https://api.tago.io/data?query=last_value";
+// URL de la API de TagoIO
+const API_URL = "https://api.tago.io/data?query=last_value";
 
-// Variables a consultar
-const VARIABLES = [
-  "location",
-  "latitud",
-  "longitud",
-  "altitud_gps",
-  "velocidad",
-  "satelites",
-  "hdop",
-  "hora_ecuador",
-  "temperatura",
-  "humedad",
-  "presion",
-  "gas_resist",
-  "altitud_bme"
-];
-
-// ==========================================================
-// MAPA
-// ==========================================================
-let map = L.map("map").setView([-2.8974, -79.0045], 13); // Cuenca, Ecuador
-
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 19,
-  attribution: "© OpenStreetMap contributors"
-}).addTo(map);
-
-let marker = L.marker([-2.8974, -79.0045]).addTo(map);
-
-// ==========================================================
-// UTILIDADES
-// ==========================================================
-function setStatus(text, ok = true) {
-  const status = document.getElementById("status");
-  status.textContent = text;
-  status.className = "status " + (ok ? "ok" : "error");
-}
-
-function setValue(id, value, decimals = null) {
-  const el = document.getElementById(id);
-  if (!el) return;
-
-  if (value === undefined || value === null || value === "") {
-    el.textContent = "--";
-    return;
-  }
-
-  if (typeof value === "number" && decimals !== null) {
-    el.textContent = value.toFixed(decimals);
-  } else {
-    el.textContent = value;
-  }
-}
-
-// ==========================================================
-// CONSULTA A TAGOIO
-// ==========================================================
-async function fetchTagoData() {
+// =====================================================
+// FUNCIÓN PRINCIPAL
+// =====================================================
+async function cargarDatos() {
   try {
-    setStatus("Consultando TagoIO...", true);
+    const status = document.getElementById("status");
+    const lastUpdate = document.getElementById("lastUpdate");
 
-    const query = VARIABLES.map(v => `variable=${encodeURIComponent(v)}`).join("&");
-    const url = `${TAGO_API}?${query}&qty=1`;
+    // Mostrar estado
+    if (status) {
+      status.textContent = "Conectando a TagoIO...";
+    }
 
-    const response = await fetch(url, {
+    // Solicitud a TagoIO
+    const response = await fetch(API_URL, {
       method: "GET",
       headers: {
-        // En navegadores, TagoIO funciona de forma más confiable con
-        // un Profile Token usando el encabezado Authorization.
         "Authorization": TAGO_TOKEN,
         "Content-Type": "application/json"
       }
     });
 
+    // Verificar respuesta HTTP
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      throw new Error("HTTP " + response.status);
     }
 
-    const json = await response.json(); // { result: [...] }
-    const data = json.result || [];
+    // Convertir respuesta JSON
+    const datos = await response.json();
 
-    if (!Array.isArray(data) || data.length === 0) {
-      throw new Error("No hay datos disponibles");
+    // Mostrar en consola
+    console.log("Datos recibidos:", datos);
+
+    // Actualizar estado
+    if (status) {
+      status.textContent = "Conectado correctamente con TagoIO";
     }
 
-    const latest = {};
+    // Mostrar fecha/hora de actualización
+    if (lastUpdate) {
+      lastUpdate.textContent =
+        "Última actualización: " + new Date().toLocaleString();
+    }
 
-    for (const item of data) {
-      if (!(item.variable in latest)) {
-        latest[item.variable] = item;
-setInterval(fetchTagoData, 5000);
+    // Aquí luego se pueden actualizar tarjetas y mapa
+
+  } catch (error) {
+    console.error("Error:", error);
+
+    const status = document.getElementById("status");
+    if (status) {
+      status.textContent =
+        "Error de conexión con TagoIO: " + error.message;
+    }
+  }
+}
+
+// =====================================================
+// INICIO AUTOMÁTICO
+// =====================================================
+window.addEventListener("load", function () {
+  // Primera carga
+  cargarDatos();
+
+  // Actualizar cada 10 segundos
+  setInterval(cargarDatos, 10000);
+});
