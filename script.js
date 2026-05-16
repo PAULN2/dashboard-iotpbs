@@ -4,7 +4,7 @@
 // ==========================================================
 
 const API_URL = "https://tago-worker.paulmartinez1991.workers.dev/";
-const UPDATE_INTERVAL = 5000;
+const UPDATE_INTERVAL = 1000;
 
 let map = null;
 let marker = null;
