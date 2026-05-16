@@ -158,8 +158,14 @@ function actualizarMapa(lat, lng) {
 // ----------------------------------------------------------
 async function cargarDatos() {
   try {
+    // ------------------------------------------------------
+    // Estado inicial
+    // ------------------------------------------------------
     actualizarEstado("Conectando con TagoIO...", true);
 
+    // ------------------------------------------------------
+    // Obtener datos del Worker
+    // ------------------------------------------------------
     const response = await fetch(API_URL, {
       method: "GET",
       cache: "no-store"
@@ -171,28 +177,34 @@ async function cargarDatos() {
 
     const raw = await response.json();
 
-    // Puede venir como array o como { result: [...] }
+    // ------------------------------------------------------
+    // Detectar formato de respuesta
+    // ------------------------------------------------------
     let arrayDatos = [];
 
     if (Array.isArray(raw)) {
       arrayDatos = raw;
-    } else if (raw.result && Array.isArray(raw.result)) {
+    } else if (raw && Array.isArray(raw.result)) {
       arrayDatos = raw.result;
     } else {
+      console.error("Respuesta recibida:", raw);
       throw new Error("Formato de respuesta no válido");
     }
 
+    // ------------------------------------------------------
+    // Convertir array en objeto { variable: valor }
+    // ------------------------------------------------------
     const datos = convertirDatos(arrayDatos);
 
     console.log("Datos procesados:", datos);
 
-    // ------------------------------------------------------
-    // LATITUD Y LONGITUD
-    // ------------------------------------------------------
+    // ======================================================
+    // UBICACIÓN GPS
+    // ======================================================
     let lat = null;
     let lng = null;
 
-    // Prioridad 1: location
+    // Prioridad 1: location procesado por convertirDatos()
     if (
       datos.location &&
       esNumeroValido(datos.location.lat) &&
@@ -201,7 +213,7 @@ async function cargarDatos() {
       lat = Number(datos.location.lat);
       lng = Number(datos.location.lng);
     }
-    // Prioridad 2: variables individuales
+    // Prioridad 2: variables latitud y longitud
     else if (
       esNumeroValido(datos.latitud) &&
       esNumeroValido(datos.longitud)
@@ -210,6 +222,7 @@ async function cargarDatos() {
       lng = Number(datos.longitud);
     }
 
+    // Mostrar coordenadas
     if (lat !== null && lng !== null) {
       setValor("latitud", lat.toFixed(6));
       setValor("longitud", lng.toFixed(6));
@@ -217,7 +230,111 @@ async function cargarDatos() {
     } else {
       setValor("latitud", "--");
       setValor("longitud", "--");
+      console.warn("No se pudieron obtener coordenadas válidas.");
     }
+
+    // ======================================================
+    // DATOS GPS
+    // ======================================================
+    setValor(
+      "satelites",
+      esNumeroValido(datos.satelites)
+        ? Number(datos.satelites)
+        : "--"
+    );
+
+    setValor(
+      "hdop",
+      formatearNumero(datos.hdop, 2)
+    );
+
+    setValor(
+      "altitud_gps",
+      formatearNumero(datos.altitud_gps, 1),
+      " m"
+    );
+
+    setValor(
+      "velocidad",
+      formatearNumero(datos.velocidad, 2),
+      " km/h"
+    );
+
+    // ======================================================
+    // DATOS BME680
+    // ======================================================
+    setValor(
+      "temperatura",
+      formatearNumero(datos.temperatura, 1),
+      " °C"
+    );
+
+    setValor(
+      "humedad",
+      formatearNumero(datos.humedad, 1),
+      " %"
+    );
+
+    setValor(
+      "presion",
+      formatearNumero(datos.presion, 1),
+      " hPa"
+    );
+
+    setValor(
+      "gas_resist",
+      formatearNumero(datos.gas_resist, 2),
+      " kΩ"
+    );
+
+    setValor(
+      "altitud_bme",
+      formatearNumero(datos.altitud_bme, 1),
+      " m"
+    );
+
+    // ======================================================
+    // HORA ECUADOR
+    // ======================================================
+    setValor(
+      "hora_ecuador",
+      datos.hora_ecuador || "--"
+    );
+
+    // ======================================================
+    // ÚLTIMA ACTUALIZACIÓN
+    // ======================================================
+    const lastUpdate = document.getElementById("last-update");
+    if (lastUpdate) {
+      if (datos.hora_ecuador) {
+        lastUpdate.textContent =
+          "Última actualización: " + datos.hora_ecuador;
+      } else {
+        lastUpdate.textContent =
+          "Última actualización: " +
+          new Date().toLocaleTimeString("es-EC");
+      }
+    }
+
+    // ======================================================
+    // Estado OK
+    // ======================================================
+    actualizarEstado("Conectado a TagoIO", true);
+
+  } catch (error) {
+    // ======================================================
+    // Error
+    // ======================================================
+    console.error("Error en cargarDatos():", error);
+
+    actualizarEstado("Error de conexión con TagoIO", false);
+
+    const lastUpdate = document.getElementById("last-update");
+    if (lastUpdate) {
+      lastUpdate.textContent = "No se pudieron cargar los datos.";
+    }
+  }
+}
 
     // ------------------------------------------------------
     // GPS
