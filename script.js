@@ -1,10 +1,4 @@
-===============================================
-// CONFIGURACIÓN
-// ==========================================================
-// Reemplaza este token por tu token de TagoIO.
-// Se recomienda crear uno de SOLO LECTURA (Read Only).
-// IMPORTANTE: para la página web utiliza un TOKEN DE PERFIL (Profile Token)
-// con permisos de SOLO LECTURA (Read Only), NO el Device Token del ESP32.
+// CONFIGURACIÓ
 const TAGO_TOKEN = "33e4dec9-056a-42bc-83e3-6ed4a540e00b";
 
 // Región US (coincide con tu ESP32)
