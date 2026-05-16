@@ -32,14 +32,14 @@ function inicializarMapa() {
   marker = L.marker([latInicial, lngInicial]).addTo(map);
   marker.bindPopup("Esperando datos del GPS...");
 
-  // Muy importante para que Leaflet calcule el tamaño
+  // Forzar recalculo del tamaño del mapa
   setTimeout(() => {
-    map.invalidateSize();
+    if (map) map.invalidateSize();
   }, 500);
 }
 
 // ----------------------------------------------------------
-// Estado de conexión
+// Actualizar estado de conexión
 // ----------------------------------------------------------
 function actualizarEstado(texto, conectado = true) {
   const status = document.getElementById("status");
@@ -52,7 +52,7 @@ function actualizarEstado(texto, conectado = true) {
 }
 
 // ----------------------------------------------------------
-// Validaciones
+// Validar si es número
 // ----------------------------------------------------------
 function esNumeroValido(valor) {
   return (
@@ -63,6 +63,9 @@ function esNumeroValido(valor) {
   );
 }
 
+// ----------------------------------------------------------
+// Formatear número
+// ----------------------------------------------------------
 function formatearNumero(valor, decimales = 1) {
   if (!esNumeroValido(valor)) return null;
   return Number(valor).toFixed(decimales);
@@ -94,7 +97,7 @@ function setValor(id, valor, sufijo = "") {
 }
 
 // ----------------------------------------------------------
-// Convertir array TagoIO a objeto
+// Convertir array de TagoIO a objeto
 // ----------------------------------------------------------
 function convertirDatos(array) {
   const datos = {};
@@ -104,16 +107,14 @@ function convertirDatos(array) {
   for (const item of array) {
     if (!item || !item.variable) continue;
 
-    // ==========================================
-    // LOCATION (TagoIO)
-    // coordinates = [longitud, latitud]
-    // ==========================================
+    // Manejo especial de la variable location
     if (item.variable === "location") {
       if (
         item.location &&
         Array.isArray(item.location.coordinates) &&
         item.location.coordinates.length >= 2
       ) {
+        // coordinates = [longitud, latitud]
         const lng = Number(item.location.coordinates[0]);
         const lat = Number(item.location.coordinates[1]);
 
@@ -128,9 +129,7 @@ function convertirDatos(array) {
       continue;
     }
 
-    // ==========================================
     // Variables normales
-    // ==========================================
     datos[item.variable] = item.value;
   }
 
@@ -138,6 +137,7 @@ function convertirDatos(array) {
 
   return datos;
 }
+
 // ----------------------------------------------------------
 // Actualizar mapa
 // ----------------------------------------------------------
@@ -159,22 +159,18 @@ function actualizarMapa(lat, lng) {
   map.setView([lat, lng], 17);
 
   setTimeout(() => {
-    map.invalidateSize();
+    if (map) map.invalidateSize();
   }, 100);
 }
 
 // ----------------------------------------------------------
-// Cargar datos desde Worker
+// Cargar datos desde Cloudflare Worker
 // ----------------------------------------------------------
-// Reemplaza TODA tu función cargarDatos() por esta versión
-
 async function cargarDatos() {
   try {
     actualizarEstado("Conectando con TagoIO...", true);
 
-    // ------------------------------------------------------
-    // Obtener datos del Worker
-    // ------------------------------------------------------
+    // Obtener datos
     const response = await fetch(API_URL, {
       method: "GET",
       cache: "no-store"
@@ -186,9 +182,7 @@ async function cargarDatos() {
 
     const raw = await response.json();
 
-    // ------------------------------------------------------
     // Normalizar respuesta
-    // ------------------------------------------------------
     let arrayDatos = [];
 
     if (Array.isArray(raw)) {
@@ -201,21 +195,16 @@ async function cargarDatos() {
 
     console.log("Datos recibidos:", arrayDatos);
 
-    // ------------------------------------------------------
-    // Convertir a objeto { variable: valor }
-    // ------------------------------------------------------
+    // Convertir datos
     const datos = convertirDatos(arrayDatos);
 
-    console.log("Datos convertidos:", datos);
-
     // ======================================================
-    // OBTENER LATITUD Y LONGITUD DIRECTAMENTE DEL JSON
-    // (más robusto que depender solo de convertirDatos)
+    // OBTENER LATITUD Y LONGITUD
     // ======================================================
     let lat = null;
     let lng = null;
 
-    // 1) Buscar variable "location"
+    // Buscar variable location
     const itemLocation = arrayDatos.find(
       (item) => item && item.variable === "location"
     );
@@ -231,22 +220,16 @@ async function cargarDatos() {
       lat = Number(itemLocation.location.coordinates[1]);
     }
 
-    // 2) Si no existe location, usar latitud y longitud individuales
-    if (
-      (lat === null || isNaN(lat)) &&
-      esNumeroValido(datos.latitud)
-    ) {
+    // Si no existen, usar latitud y longitud individuales
+    if ((lat === null || isNaN(lat)) && esNumeroValido(datos.latitud)) {
       lat = Number(datos.latitud);
     }
 
-    if (
-      (lng === null || isNaN(lng)) &&
-      esNumeroValido(datos.longitud)
-    ) {
+    if ((lng === null || isNaN(lng)) && esNumeroValido(datos.longitud)) {
       lng = Number(datos.longitud);
     }
 
-    // 3) Mostrar coordenadas
+    // Mostrar coordenadas
     if (
       lat !== null &&
       lng !== null &&
@@ -263,27 +246,29 @@ async function cargarDatos() {
     }
 
     // ======================================================
-    // MOSTRAR TODOS LOS DATOS DIRECTAMENTE
+    // DATOS GPS
     // ======================================================
-
-    // GPS
     setValor("satelites", datos.satelites);
     setValor("hdop", formatearNumero(datos.hdop, 2));
     setValor("altitud_gps", formatearNumero(datos.altitud_gps, 1), " m");
     setValor("velocidad", formatearNumero(datos.velocidad, 2), " km/h");
 
-    // BME680
+    // ======================================================
+    // DATOS BME680
+    // ======================================================
     setValor("temperatura", formatearNumero(datos.temperatura, 1), " °C");
     setValor("humedad", formatearNumero(datos.humedad, 1), " %");
     setValor("presion", formatearNumero(datos.presion, 1), " hPa");
     setValor("gas_resist", formatearNumero(datos.gas_resist, 2), " kΩ");
     setValor("altitud_bme", formatearNumero(datos.altitud_bme, 1), " m");
 
-    // Hora Ecuador
+    // ======================================================
+    // HORA ECUADOR
+    // ======================================================
     setValor("hora_ecuador", datos.hora_ecuador);
 
     // ======================================================
-    // Última actualización
+    // ÚLTIMA ACTUALIZACIÓN
     // ======================================================
     const lastUpdate = document.getElementById("last-update");
     if (lastUpdate) {
@@ -308,14 +293,15 @@ async function cargarDatos() {
     }
   }
 }
+
 // ----------------------------------------------------------
-// Inicio
+// Inicio del dashboard
 // ----------------------------------------------------------
 document.addEventListener("DOMContentLoaded", () => {
   inicializarMapa();
   cargarDatos();
 
-  // Actualizar cada 5 segundos
+  // Actualizar periódicamente
   setInterval(cargarDatos, UPDATE_INTERVAL);
 
   // Recalcular tamaño del mapa al cambiar tamaño de ventana
