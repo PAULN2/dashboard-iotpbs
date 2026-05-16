@@ -8,7 +8,7 @@
 const TAGO_TOKEN = "33e4dec9-056a-42bc-83e3-6ed4a540e00b";
 
 // Región US (coincide con tu ESP32)
-const TAGO_API = "https://api.us.tago.io/data";
+const TAGO_API = "https://api.tago.io/data?query=last_value";
 
 // Variables a consultar
 const VARIABLES = [
