@@ -6,7 +6,7 @@
 const TAGO_TOKEN = "fdaffbf5-1a1f-40e1-9ba8-f35faf3139c6";
 
 // URL de la API de TagoIO
-const API_URL = "https://api.tago.io/data?query=last_value";
+const API_URL = "https://api.tago.io/data?qty=50";
 
 // =====================================================
 // FUNCIÓN PRINCIPAL
