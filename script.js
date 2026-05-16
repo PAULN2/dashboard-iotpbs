@@ -4,7 +4,7 @@
 // ==========================================================
 
 const API_URL = "https://tago-worker.paulmartinez1991.workers.dev/";
-const UPDATE_INTERVAL = 1000;
+const UPDATE_INTERVAL = 5000;
 
 let map = null;
 let marker = null;
@@ -14,9 +14,7 @@ let marker = null;
 // ----------------------------------------------------------
 function inicializarMapa() {
   const mapElement = document.getElementById("map");
-
-  if (!mapElement) return;
-  if (typeof L === "undefined") return;
+  if (!mapElement || typeof L === "undefined") return;
 
   // Coordenadas iniciales (Cuenca, Ecuador)
   const latInicial = -2.90055;
@@ -32,7 +30,7 @@ function inicializarMapa() {
   marker = L.marker([latInicial, lngInicial]).addTo(map);
   marker.bindPopup("Esperando datos del GPS...");
 
-  // Forzar recalculo del tamaño del mapa
+  // Forzar recálculo del tamaño del mapa
   setTimeout(() => {
     if (map) map.invalidateSize();
   }, 500);
@@ -46,13 +44,12 @@ function actualizarEstado(texto, conectado = true) {
   if (!status) return;
 
   status.textContent = texto;
-
   status.classList.remove("ok", "error");
   status.classList.add(conectado ? "ok" : "error");
 }
 
 // ----------------------------------------------------------
-// Validar si es número
+// Validar si un valor es numérico
 // ----------------------------------------------------------
 function esNumeroValido(valor) {
   return (
@@ -64,7 +61,7 @@ function esNumeroValido(valor) {
 }
 
 // ----------------------------------------------------------
-// Formatear número
+// Formatear número con decimales
 // ----------------------------------------------------------
 function formatearNumero(valor, decimales = 1) {
   if (!esNumeroValido(valor)) return null;
@@ -107,7 +104,7 @@ function convertirDatos(array) {
   for (const item of array) {
     if (!item || !item.variable) continue;
 
-    // Manejo especial de la variable location
+    // Manejo especial de "location"
     if (item.variable === "location") {
       if (
         item.location &&
@@ -134,7 +131,6 @@ function convertirDatos(array) {
   }
 
   console.log("Datos convertidos:", datos);
-
   return datos;
 }
 
@@ -150,11 +146,11 @@ function actualizarMapa(lat, lng) {
 
   marker.setLatLng([lat, lng]);
 
-  marker.bindPopup(`
-    <b>Ubicación GPS</b><br>
-    Latitud: ${lat.toFixed(6)}<br>
-    Longitud: ${lng.toFixed(6)}
-  `);
+  marker.bindPopup(
+    `<b>Ubicación GPS</b><br>
+     Latitud: ${lat.toFixed(6)}<br>
+     Longitud: ${lng.toFixed(6)}`
+  );
 
   map.setView([lat, lng], 17);
 
@@ -164,13 +160,13 @@ function actualizarMapa(lat, lng) {
 }
 
 // ----------------------------------------------------------
-// Cargar datos desde Cloudflare Worker
+// Cargar datos desde el Worker
 // ----------------------------------------------------------
 async function cargarDatos() {
   try {
     actualizarEstado("Conectando con TagoIO...", true);
 
-    // Obtener datos
+    // Obtener datos del Worker
     const response = await fetch(API_URL, {
       method: "GET",
       cache: "no-store"
@@ -204,7 +200,7 @@ async function cargarDatos() {
     let lat = null;
     let lng = null;
 
-    // Buscar variable location
+    // Prioridad 1: location
     const itemLocation = arrayDatos.find(
       (item) => item && item.variable === "location"
     );
@@ -220,7 +216,7 @@ async function cargarDatos() {
       lat = Number(itemLocation.location.coordinates[1]);
     }
 
-    // Si no existen, usar latitud y longitud individuales
+    // Prioridad 2: variables individuales
     if ((lat === null || isNaN(lat)) && esNumeroValido(datos.latitud)) {
       lat = Number(datos.latitud);
     }
@@ -304,7 +300,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Actualizar periódicamente
   setInterval(cargarDatos, UPDATE_INTERVAL);
 
-  // Recalcular tamaño del mapa al cambiar tamaño de ventana
+  // Recalcular tamaño del mapa al redimensionar
   window.addEventListener("resize", () => {
     if (map) {
       setTimeout(() => {
