@@ -73,18 +73,24 @@ function formatearNumero(valor, decimales = 1) {
 // ----------------------------------------------------------
 function setValor(id, valor, sufijo = "") {
   const el = document.getElementById(id);
-  if (!el) return;
+
+  if (!el) {
+    console.warn(`No existe el elemento con id="${id}"`);
+    return;
+  }
 
   if (
     valor === undefined ||
     valor === null ||
     valor === "" ||
-    valor === "NaN"
+    valor === "NaN" ||
+    (typeof valor === "number" && isNaN(valor))
   ) {
     el.textContent = "--";
-  } else {
-    el.textContent = `${valor}${sufijo}`;
+    return;
   }
+
+  el.textContent = `${valor}${sufijo}`;
 }
 
 // ----------------------------------------------------------
@@ -95,39 +101,43 @@ function convertirDatos(array) {
 
   if (!Array.isArray(array)) return datos;
 
-  array.forEach((item) => {
-    if (!item || !item.variable) return;
+  for (const item of array) {
+    if (!item || !item.variable) continue;
 
-    // Manejo especial de "location"
+    // ==========================================
+    // LOCATION (TagoIO)
+    // coordinates = [longitud, latitud]
+    // ==========================================
     if (item.variable === "location") {
-      // Formato TagoIO:
-      // location.coordinates = [lng, lat]
       if (
         item.location &&
         Array.isArray(item.location.coordinates) &&
         item.location.coordinates.length >= 2
       ) {
-        const lng = item.location.coordinates[0];
-        const lat = item.location.coordinates[1];
+        const lng = Number(item.location.coordinates[0]);
+        const lat = Number(item.location.coordinates[1]);
 
-        if (esNumeroValido(lat) && esNumeroValido(lng)) {
+        if (!isNaN(lat) && !isNaN(lng)) {
           datos.location = {
-            lat: Number(lat),
-            lng: Number(lng)
+            lat: lat,
+            lng: lng
           };
         }
       }
 
-      return;
+      continue;
     }
 
+    // ==========================================
     // Variables normales
+    // ==========================================
     datos[item.variable] = item.value;
-  });
+  }
+
+  console.log("Datos convertidos:", datos);
 
   return datos;
 }
-
 // ----------------------------------------------------------
 // Actualizar mapa
 // ----------------------------------------------------------
