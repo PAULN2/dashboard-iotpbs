@@ -1,3 +1,10 @@
+```
+
+---
+
+# 3. `style.css`
+
+```css
 body {
   margin: 0;
   font-family: Arial, sans-serif;
@@ -62,5 +69,3 @@ h1 {
   overflow: hidden;
   border: 2px solid #00d9ff55;
 }
-
-Con los archivos anteriores, el mapa debe mostrarse correctamente.
