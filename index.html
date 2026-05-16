@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard IoT - Proyecto Final</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="config.js"></script>
+
+  <style>
+    :root {
+      --bg1: #020617;
+      --bg2: #0f172a;
+      --card: rgba(15, 23, 42, 0.75);
+      --border: rgba(0, 255, 255, 0.18);
+      --primary: #00e5ff;
+      --secondary: #8b5cf6;
+      --success: #00ff99;
+      --warning: #fbbf24;
+      --text: #e2f3ff;
+      --muted: #94a3b8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top right, rgba(139, 92, 246, 0.12), transparent 35%),
+        radial-gradient(circle at top left, rgba(0, 229, 255, 0.08), transparent 35%),
+        linear-gradient(135deg, var(--bg1), var(--bg2));
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .container {
+      max-width: 1500px;
+      margin: auto;
+    }
+
+    .header {
+      padding: 28px;
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 0 40px rgba(0, 229, 255, 0.08);
+      margin-bottom: 24px;
+    }
+
+    .header h1 {
+      font-size: 2.5rem;
+      font-weight: 800;
+      background: linear-gradient(90deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .header p {
+      margin-top: 8px;
+      color: var(--muted);
+    }
+
+    .status {
+      margin-top: 16px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(0, 255, 153, 0.08);
+      border: 1px solid rgba(0, 255, 153, 0.2);
+      color: var(--success);
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%; 
+      background: var(--success);
+      box-shadow: 0 0 10px var(--success);
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.4); opacity: 0.5; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .updated {
+      margin-top: 10px;
+      font-size: 0.9rem;
+      color: var(--warning);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 24px;
+    }
+
+    @media (max-width: 1100px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 20px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 0 30px rgba(0, 229, 255, 0.06);
+    }
+
+    .panel h2 {
+      margin-bottom: 16px;
+      color: var(--primary);
+    }
+
+    #map {
+      width: 100%; 
+      height: 650px;
+      border-radius: 18px;
+      overflow: hidden;
+    }
+
+    .cards {
+      display: grid;
+      gap: 14px;
+    }
+
+    .card {
+      padding: 16px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      transition: 0.25s;
+    }
+
+    .card:hover {
+      transform: translateY(-3px);
+      border-color: rgba(0, 229, 255, 0.25);
+      box-shadow: 0 0 20px rgba(0, 229, 255, 0.08);
+    }
+
+    .label {
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-size: 0.8rem;
+      margin-bottom: 6px;
+    }
+
+    .value {
+      font-size: 1.55rem;
+      font-weight: 700;
+      word-break: break-word;
+    }
+
+    .unit {
+      font-size: 0.85rem;
+      color: var(--primary);
+    }
+
+    .footer {
+      margin-top: 24px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .error {
+      color: #ff6b6b;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>🚀 Dashboard IoT Inteligente</h1>
+      <p>ESP32 + GPS NEO-6M + BME680 + TagoIO</p>
+      <div class="status">
+        <span class="dot"></span>
+        <span id="statusText">Conectando a TagoIO...</span>
+      </div>
+      <div id="lastUpdate" class="updated">Esperando datos...</div>
+    </header>
+
+    <div class="layout">
+      <section class="panel">
+        <h2>📍 Ubicación GPS en Tiempo Real</h2>
+        <div id="map"></div>
+      </section>
+
+      <section class="panel">
+        <h2>📡 Telemetría</h2>
+        <div class="cards">
+          <div class="card"><div class="label">Latitud</div><div class="value" id="latitud">--</div></div>
+          <div class="card"><div class="label">Longitud</div><div class="value" id="longitud">--</div></div>
+          <div class="card"><div class="label">Altitud GPS</div><div class="value" id="altitud_gps">-- <span class="unit">m</span></div></div>
+          <div class="card"><div class="label">Velocidad</div><div class="value" id="velocidad">-- <span class="unit">km/h</span></div></div>
+          <div class="card"><div class="label">Satélites</div><div class="value" id="satelites">--</div></div>
+          <div class="card"><div class="label">HDOP</div><div class="value" id="hdop">--</div></div>
+          <div class="card"><div class="label">Temperatura</div><div class="value" id="temperatura">-- <span class="unit">°C</span></div></div>
+          <div class="card"><div class="label">Humedad</div><div class="value" id="humedad">-- <span class="unit">%</span></div></div>
+          <div class="card"><div class="label">Presión</div><div class="value" id="presion">-- <span class="unit">hPa</span></div></div>
+          <div class="card"><div class="label">Gas</div><div class="value" id="gas_resist">-- <span class="unit">kΩ</span></div></div>
+          <div class="card"><div class="label">Altitud BME680</div><div class="value" id="altitud_bme">-- <span class="unit">m</span></div></div>
+          <div class="card"><div class="label">Hora Ecuador</div><div class="value" id="hora_ecuador" style="font-size:1.05rem;">--</div></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="footer">
+      Proyecto Final de Sistemas Microcontrolados — Monitoreo Ambiental y Geolocalización en Tiempo Real
+    </div>
+  </div>
+
+  <script>
+    let map;
+    let marker;
+
+    function initMap() {
+      const defaultLat = -2.8974;
+      const defaultLng = -79.0045;
+
+      map = L.map('map').setView([defaultLat, defaultLng], 14);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap'
+      }).addTo(map);
+
+      marker = L.marker([defaultLat, defaultLng]).addTo(map);
+      marker.bindPopup('Esperando posición GPS...');
+    }
+
+    function setStatus(text, ok = true) {
+      const el = document.getElementById('statusText');
+      el.textContent = text;
+      el.className = ok ? '' : 'error';
+    }
+
+    function setValue(id, value, decimals = null) {
+      const el = document.getElementById(id);
+      if (!el) return;
+
+      const firstNode = el.childNodes[0];
+      if (!firstNode) return;
+
+      if (value === undefined || value === null || Number.isNaN(value)) {
+        firstNode.nodeValue = '-- ';
+        return;
+      }
+
+      if (typeof value === 'number' && decimals !== null) {
+        firstNode.nodeValue = value.toFixed(decimals) + ' ';
+      } else {
+        firstNode.nodeValue = String(value) + ' ';
+      }
+    }
+
+    async function fetchData() {
+      try {
+        const response = await fetch(TAGO_API, {
+          headers: {
+            'Device-Token': TAGO_TOKEN,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('HTTP ' + response.status);
+        }
+
+        const data = await response.json(); // últimos valores
+        const values = {};
+
+        data.forEach(item => {
+          values[item.variable] = item;
+        });
+
+        // Obtener coordenadas desde la variable geográfica
+        if (values.location && values.location.location && values.location.location.coordinates) {
+          const coords = values.location.location.coordinates;
+          const lng = coords[0];
+          const lat = coords[1];
+
+          setValue('latitud', lat, 6);
+          setValue('longitud', lng, 6);
+
+          marker.setLatLng([lat, lng]);
+          marker.bindPopup(`Lat: ${lat.toFixed(6)}<br>Lng: ${lng.toFixed(6)}`);
+          map.setView([lat, lng], 17);
+        } else {
+          // Respaldo con variables numéricas
+          if (values.latitud && values.longitud) {
+            const lat = Number(values.latitud.value);
+            const lng = Number(values.longitud.value);
+
+            setValue('latitud', lat, 6);
+            setValue('longitud', lng, 6);
+
+            marker.setLatLng([lat, lng]);
+            marker.bindPopup(`Lat: ${lat.toFixed(6)}<br>Lng: ${lng.toFixed(6)}`);
+            map.setView([lat, lng], 17);
+          }
+        }
+
+        const vars = [
+          ['altitud_gps', 1],
+          ['velocidad', 1],
+          ['satelites', 0],
+          ['hdop', 2],
+          ['temperatura', 1],
+          ['humedad', 1],
+          ['presion', 1],
+          ['gas_resist', 1],
+          ['altitud_bme', 1]
+        ];
+
+        vars.forEach(([name, decimals]) => {
+          if (values[name]) {
+            setValue(name, Number(values[name].value), decimals);
+          }
+        });
+
+        if (values.hora_ecuador) {
+          const el = document.getElementById('hora_ecuador');
+          el.textContent = values.hora_ecuador.value;
+        }
+
+        setStatus('Conectado a TagoIO', true);
+        document.getElementById('lastUpdate').textContent =
+          'Última actualización: ' + new Date().toLocaleString(); 
+
+      } catch (error) {
+        console.error(error);
+        setStatus('Error de conexión con TagoIO', false);
+      }
+    }
+
+    initMap();
+    fetchData();
+    setInterval(fetchData, UPDATE_INTERVAL);
+  </script>
+</body>
+</html>
