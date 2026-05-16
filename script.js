@@ -3,7 +3,7 @@
 // Compatible con Cloudflare Worker + TagoIO
 // ==========================================================
 
-const API_URL = "https://tago-worker.paulmartinez1991.workers.dev/";
+const API_URL = "https://tago-worker-cisne.mariadelcisne01correa.workers.dev/";
 const UPDATE_INTERVAL = 5000;
 
 let map = null;
