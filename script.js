@@ -1,6 +1,6 @@
 // ==========================================================
 // DASHBOARD IoT - script.js
-// Versión corregida y simplificada
+// Compatible con Cloudflare Worker + TagoIO
 // ==========================================================
 
 const API_URL = "https://tago-worker.paulmartinez1991.workers.dev/";
@@ -18,6 +18,7 @@ function inicializarMapa() {
   if (!mapElement) return;
   if (typeof L === "undefined") return;
 
+  // Coordenadas iniciales (Cuenca, Ecuador)
   const latInicial = -2.90055;
   const lngInicial = -79.00453;
 
@@ -31,24 +32,23 @@ function inicializarMapa() {
   marker = L.marker([latInicial, lngInicial]).addTo(map);
   marker.bindPopup("Esperando datos del GPS...");
 
-  setTimeout(function () {
-    if (map) {
-      map.invalidateSize();
-    }
+  // Muy importante para que Leaflet calcule el tamaño
+  setTimeout(() => {
+    map.invalidateSize();
   }, 500);
 }
 
 // ----------------------------------------------------------
 // Estado de conexión
 // ----------------------------------------------------------
-function actualizarEstado(texto, conectado) {
-  if (conectado === undefined) conectado = true;
-
+function actualizarEstado(texto, conectado = true) {
   const status = document.getElementById("status");
   if (!status) return;
 
   status.textContent = texto;
-  status.className = conectado ? "status ok" : "status error";
+
+  status.classList.remove("ok", "error");
+  status.classList.add(conectado ? "ok" : "error");
 }
 
 // ----------------------------------------------------------
@@ -63,84 +63,67 @@ function esNumeroValido(valor) {
   );
 }
 
-function formatearNumero(valor, decimales) {
-  if (decimales === undefined) decimales = 1;
-
+function formatearNumero(valor, decimales = 1) {
   if (!esNumeroValido(valor)) return null;
-
   return Number(valor).toFixed(decimales);
 }
 
 // ----------------------------------------------------------
-// Mostrar valores en pantalla
+// Mostrar valor en pantalla
 // ----------------------------------------------------------
-function setValor(id, valor, sufijo) {
-  if (sufijo === undefined) sufijo = "";
-
+function setValor(id, valor, sufijo = "") {
   const el = document.getElementById(id);
-  if (!el) {
-    console.warn("No existe el elemento con id:", id);
-    return;
-  }
+  if (!el) return;
 
   if (
     valor === undefined ||
     valor === null ||
     valor === "" ||
-    valor === "NaN" ||
-    (typeof valor === "number" && isNaN(valor))
+    valor === "NaN"
   ) {
     el.textContent = "--";
-    return;
+  } else {
+    el.textContent = `${valor}${sufijo}`;
   }
-
-  el.textContent = String(valor) + sufijo;
 }
 
 // ----------------------------------------------------------
-// Convertir datos TagoIO a objeto
+// Convertir array TagoIO a objeto
 // ----------------------------------------------------------
 function convertirDatos(array) {
   const datos = {};
 
-  if (!Array.isArray(array)) {
-    return datos;
-  }
+  if (!Array.isArray(array)) return datos;
 
-  for (let i = 0; i < array.length; i++) {
-    const item = array[i];
+  array.forEach((item) => {
+    if (!item || !item.variable) return;
 
-    if (!item || !item.variable) {
-      continue;
-    }
-
-    // Manejo especial para "location"
+    // Manejo especial de "location"
     if (item.variable === "location") {
+      // Formato TagoIO:
+      // location.coordinates = [lng, lat]
       if (
         item.location &&
         Array.isArray(item.location.coordinates) &&
         item.location.coordinates.length >= 2
       ) {
-        // coordinates = [longitud, latitud]
-        const lng = Number(item.location.coordinates[0]);
-        const lat = Number(item.location.coordinates[1]);
+        const lng = item.location.coordinates[0];
+        const lat = item.location.coordinates[1];
 
-        if (!isNaN(lat) && !isNaN(lng)) {
+        if (esNumeroValido(lat) && esNumeroValido(lng)) {
           datos.location = {
-            lat: lat,
-            lng: lng
+            lat: Number(lat),
+            lng: Number(lng)
           };
         }
       }
 
-      continue;
+      return;
     }
 
     // Variables normales
     datos[item.variable] = item.value;
-  }
-
-  console.log("Datos convertidos:", datos);
+  });
 
   return datos;
 }
@@ -157,23 +140,21 @@ function actualizarMapa(lat, lng) {
 
   marker.setLatLng([lat, lng]);
 
-  marker.bindPopup(
-    "<b>Ubicación GPS</b><br>" +
-      "Latitud: " + lat.toFixed(6) + "<br>" +
-      "Longitud: " + lng.toFixed(6)
-  );
+  marker.bindPopup(`
+    <b>Ubicación GPS</b><br>
+    Latitud: ${lat.toFixed(6)}<br>
+    Longitud: ${lng.toFixed(6)}
+  `);
 
   map.setView([lat, lng], 17);
 
-  setTimeout(function () {
-    if (map) {
-      map.invalidateSize();
-    }
+  setTimeout(() => {
+    map.invalidateSize();
   }, 100);
 }
 
 // ----------------------------------------------------------
-// Cargar datos
+// Cargar datos desde Worker
 // ----------------------------------------------------------
 async function cargarDatos() {
   try {
@@ -185,31 +166,33 @@ async function cargarDatos() {
     });
 
     if (!response.ok) {
-      throw new Error("HTTP " + response.status);
+      throw new Error(`HTTP ${response.status}`);
     }
 
     const raw = await response.json();
 
+    // Puede venir como array o como { result: [...] }
     let arrayDatos = [];
 
     if (Array.isArray(raw)) {
       arrayDatos = raw;
-    } else if (raw && Array.isArray(raw.result)) {
+    } else if (raw.result && Array.isArray(raw.result)) {
       arrayDatos = raw.result;
     } else {
       throw new Error("Formato de respuesta no válido");
     }
 
-    console.log("Datos recibidos:", arrayDatos);
-
     const datos = convertirDatos(arrayDatos);
 
+    console.log("Datos procesados:", datos);
+
     // ------------------------------------------------------
-    // Latitud y Longitud
+    // LATITUD Y LONGITUD
     // ------------------------------------------------------
     let lat = null;
     let lng = null;
 
+    // Prioridad 1: location
     if (
       datos.location &&
       esNumeroValido(datos.location.lat) &&
@@ -217,7 +200,9 @@ async function cargarDatos() {
     ) {
       lat = Number(datos.location.lat);
       lng = Number(datos.location.lng);
-    } else if (
+    }
+    // Prioridad 2: variables individuales
+    else if (
       esNumeroValido(datos.latitud) &&
       esNumeroValido(datos.longitud)
     ) {
@@ -225,12 +210,7 @@ async function cargarDatos() {
       lng = Number(datos.longitud);
     }
 
-    if (
-      lat !== null &&
-      lng !== null &&
-      !isNaN(lat) &&
-      !isNaN(lng)
-    ) {
+    if (lat !== null && lng !== null) {
       setValor("latitud", lat.toFixed(6));
       setValor("longitud", lng.toFixed(6));
       actualizarMapa(lat, lng);
@@ -240,7 +220,7 @@ async function cargarDatos() {
     }
 
     // ------------------------------------------------------
-    // Datos GPS
+    // GPS
     // ------------------------------------------------------
     setValor("satelites", datos.satelites);
     setValor("hdop", formatearNumero(datos.hdop, 2));
@@ -248,7 +228,7 @@ async function cargarDatos() {
     setValor("velocidad", formatearNumero(datos.velocidad, 2), " km/h");
 
     // ------------------------------------------------------
-    // Datos BME680
+    // BME680
     // ------------------------------------------------------
     setValor("temperatura", formatearNumero(datos.temperatura, 1), " °C");
     setValor("humedad", formatearNumero(datos.humedad, 1), " %");
@@ -268,35 +248,30 @@ async function cargarDatos() {
     if (lastUpdate) {
       lastUpdate.textContent =
         "Última actualización: " +
-        (datos.hora_ecuador || new Date().toLocaleTimeString("es-EC"));
+        new Date().toLocaleTimeString("es-EC");
     }
 
     actualizarEstado("Conectado a TagoIO", true);
-
   } catch (error) {
-    console.error("Error en cargarDatos():", error);
-
+    console.error("Error:", error);
     actualizarEstado("Error de conexión con TagoIO", false);
-
-    const lastUpdate = document.getElementById("last-update");
-    if (lastUpdate) {
-      lastUpdate.textContent = "No se pudieron cargar los datos.";
-    }
   }
 }
 
 // ----------------------------------------------------------
 // Inicio
 // ----------------------------------------------------------
-document.addEventListener("DOMContentLoaded", function () {
+document.addEventListener("DOMContentLoaded", () => {
   inicializarMapa();
   cargarDatos();
 
+  // Actualizar cada 5 segundos
   setInterval(cargarDatos, UPDATE_INTERVAL);
 
-  window.addEventListener("resize", function () {
+  // Recalcular tamaño del mapa al cambiar tamaño de ventana
+  window.addEventListener("resize", () => {
     if (map) {
-      setTimeout(function () {
+      setTimeout(() => {
         map.invalidateSize();
       }, 100);
     }
