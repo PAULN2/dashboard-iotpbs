@@ -1,16 +1,11 @@
 // ==========================================================
-// DASHBOARD IoT - script.js
-// ESP32 + GPS NEO-6M + BME680 + TagoIO
-// Datos obtenidos mediante Cloudflare Worker
+// DASHBOARD IoT - script.js (VERSIÓN CORREGIDA)
+// Compatible con Cloudflare Worker + TagoIO
 // ==========================================================
 
-// URL de tu Cloudflare Worker
 const API_URL = "https://tago-worker.paulmartinez1991.workers.dev/";
-
-// Intervalo de actualización (ms)
 const UPDATE_INTERVAL = 5000;
 
-// Variables globales del mapa
 let map;
 let marker;
 
@@ -41,105 +36,76 @@ function actualizarEstado(texto, conectado = true) {
 }
 
 // ==========================================================
-// FORMATEAR NÚMERO
+// VALIDAR NÚMERO
 // ==========================================================
-function formatNumber(valor, decimales = 1) {
-  const num = Number(valor);
-
-  if (valor === undefined || valor === null || valor === "") {
-    return "--";
-  }
-
-  if (isNaN(num)) {
-    return "--";
-  }
-
-  return num.toFixed(decimales);
+function esNumeroValido(valor) {
+  return valor !== undefined &&
+         valor !== null &&
+         valor !== "" &&
+         !isNaN(Number(valor));
 }
 
 // ==========================================================
-// ACTUALIZAR ELEMENTO HTML
+// ASIGNAR VALOR A TARJETA
 // ==========================================================
 function setValor(id, valor, sufijo = "") {
   const el = document.getElementById(id);
   if (!el) return;
 
-  if (
-    valor === undefined ||
-    valor === null ||
-    valor === "" ||
-    valor === "NaN" ||
-    valor === "--"
-  ) {
+  if (valor === undefined || valor === null || valor === "" || valor === "NaN") {
     el.textContent = "--";
-  } else {
-    el.textContent = `${valor}${sufijo}`;
+    return;
   }
+
+  el.textContent = `${valor}${sufijo}`;
 }
 
 // ==========================================================
-// CONVERTIR ARRAY DE TAGO A OBJETO
+// FORMATEAR NÚMERO
+// ==========================================================
+function formatearNumero(valor, decimales = 1) {
+  if (!esNumeroValido(valor)) return null;
+  return Number(valor).toFixed(decimales);
+}
+
+// ==========================================================
+// CONVERTIR RESPUESTA DE TAGO A OBJETO
 // ==========================================================
 function convertirDatos(array) {
   const datos = {};
 
-  if (!Array.isArray(array)) return datos;
+  if (!Array.isArray(array)) {
+    console.error("La respuesta no es un arreglo:", array);
+    return datos;
+  }
 
   array.forEach(item => {
     if (!item || !item.variable) return;
 
-    // ---------------- LOCATION ----------------
+    // ------------------------------------------------------
+    // LOCATION
+    // Puede venir en:
+    // item.location = {lat, lng}
+    // item.value = {lat, lng}
+    // item.value = "[object Object]" (inválido)
+    // ------------------------------------------------------
     if (item.variable === "location") {
-      let loc = null;
-
-      // Formato 1: { value: { lat, lng } }
-      if (item.value && typeof item.value === "object") {
-        if (
-          item.value.lat !== undefined &&
-          item.value.lng !== undefined
-        ) {
-          loc = {
-            lat: item.value.lat,
-            lng: item.value.lng
-          };
-        }
-      }
-
-      // Formato 2: { location: { lat, lng } }
-      if (!loc && item.location) {
-        if (
+      if (item.location &&
           item.location.lat !== undefined &&
-          item.location.lng !== undefined
-        ) {
-          loc = {
-            lat: item.location.lat,
-            lng: item.location.lng
-          };
-        }
+          item.location.lng !== undefined) {
+        datos.location = item.location;
       }
-
-      // Formato 3: GeoJSON coordinates [lng, lat]
-      if (
-        !loc &&
-        item.location &&
-        item.location.coordinates &&
-        Array.isArray(item.location.coordinates)
-      ) {
-        loc = {
-          lat: item.location.coordinates[1],
-          lng: item.location.coordinates[0]
-        };
+      else if (item.value &&
+               typeof item.value === "object" &&
+               item.value.lat !== undefined &&
+               item.value.lng !== undefined) {
+        datos.location = item.value;
       }
-
-      if (loc) {
-        datos.location = loc;
-      }
+      return;
     }
 
-    // ---------------- OTRAS VARIABLES ----------------
-    else {
-      datos[item.variable] = item.value;
-    }
+    // Guardar variables normales
+    datos[item.variable] = item.value;
   });
 
   return datos;
@@ -164,10 +130,15 @@ function actualizarMapa(location) {
     Latitud: ${lat.toFixed(6)}<br>
     Longitud: ${lng.toFixed(6)}
   `);
+
+  // Forzar redibujado del mapa
+  setTimeout(() => {
+    map.invalidateSize();
+  }, 200);
 }
 
 // ==========================================================
-// CARGAR DATOS
+// CARGAR DATOS DESDE EL WORKER
 // ==========================================================
 async function cargarDatos() {
   try {
@@ -184,57 +155,95 @@ async function cargarDatos() {
 
     const raw = await response.json();
 
-    if (!Array.isArray(raw) || raw.length === 0) {
+    console.log("Respuesta del Worker:", raw);
+
+    // El Worker puede devolver:
+    // 1. Un array directamente
+    // 2. { status: true, result: [...] }
+    let arrayDatos = [];
+
+    if (Array.isArray(raw)) {
+      arrayDatos = raw;
+    } else if (raw.result && Array.isArray(raw.result)) {
+      arrayDatos = raw.result;
+    } else {
+      throw new Error("Formato de respuesta no válido");
+    }
+
+    if (arrayDatos.length === 0) {
       throw new Error("No se recibieron datos");
     }
 
-    console.log("Datos recibidos:", raw);
-
-    const datos = convertirDatos(raw);
+    const datos = convertirDatos(arrayDatos);
 
     console.log("Datos procesados:", datos);
 
     // ======================================================
-    // BME680
-    // ======================================================
-    setValor("temperatura", formatNumber(datos.temperatura, 1), " °C");
-    setValor("humedad", formatNumber(datos.humedad, 1), " %");
-    setValor("presion", formatNumber(datos.presion, 1), " hPa");
-    setValor("gas", formatNumber(datos.gas_resist, 1), " kΩ");
-    setValor("altitudBME", formatNumber(datos.altitud_bme, 1), " m");
-
-    // ======================================================
-    // GPS
-    // ======================================================
-    setValor("altitudGPS", formatNumber(datos.altitud_gps, 1), " m");
-    setValor("velocidad", formatNumber(datos.velocidad, 2), " km/h");
-    setValor("satelites", formatNumber(datos.satelites, 0));
-    setValor("hdop", formatNumber(datos.hdop, 2));
-
-    // ======================================================
-    // FECHA Y HORA
-    // ======================================================
-    setValor("hora", datos.hora_ecuador);
-
-    // ======================================================
     // LATITUD Y LONGITUD
     // ======================================================
-    if (datos.location) {
-      const lat = parseFloat(datos.location.lat);
-      const lng = parseFloat(datos.location.lng);
+    let lat = null;
+    let lng = null;
 
-      if (!isNaN(lat) && !isNaN(lng)) {
-        setValor("latitud", lat.toFixed(6));
-        setValor("longitud", lng.toFixed(6));
-
-        actualizarMapa({
-          lat: lat,
-          lng: lng
-        });
-      }
+    // Prioridad 1: variable location
+    if (datos.location &&
+        esNumeroValido(datos.location.lat) &&
+        esNumeroValido(datos.location.lng)) {
+      lat = Number(datos.location.lat);
+      lng = Number(datos.location.lng);
+    }
+    // Prioridad 2: variables individuales
+    else if (esNumeroValido(datos.latitud) &&
+             esNumeroValido(datos.longitud)) {
+      lat = Number(datos.latitud);
+      lng = Number(datos.longitud);
     }
 
+    if (lat !== null && lng !== null) {
+      setValor("latitud", lat.toFixed(6));
+      setValor("longitud", lng.toFixed(6));
+
+      actualizarMapa({
+        lat: lat,
+        lng: lng
+      });
+    } else {
+      setValor("latitud", "--");
+      setValor("longitud", "--");
+    }
+
+    // ======================================================
+    // VARIABLES GPS
+    // ======================================================
+    setValor("satelites", datos.satelites ?? "--");
+    setValor("hdop", formatearNumero(datos.hdop, 2));
+    setValor("altitudGPS", formatearNumero(datos.altitud_gps, 1), " m");
+    setValor("velocidad", formatearNumero(datos.velocidad, 2), " km/h");
+
+    // ======================================================
+    // VARIABLES BME680
+    // ======================================================
+    setValor("temperatura", formatearNumero(datos.temperatura, 1), " °C");
+    setValor("humedad", formatearNumero(datos.humedad, 1), " %");
+    setValor("presion", formatearNumero(datos.presion, 1), " hPa");
+    setValor("gas", formatearNumero(datos.gas_resist, 1), " kΩ");
+    setValor("altitudBME", formatearNumero(datos.altitud_bme, 1), " m");
+
+    // ======================================================
+    // HORA
+    // ======================================================
+    setValor("hora", datos.hora_ecuador || "--");
+
+    // ======================================================
+    // ESTADO
+    // ======================================================
     actualizarEstado("Conectado a TagoIO", true);
+
+    const subtitle = document.querySelector(".subtitle");
+    if (subtitle) {
+      subtitle.textContent =
+        "Última actualización: " + new Date().toLocaleTimeString();
+    }
+
   } catch (error) {
     console.error("Error:", error);
     actualizarEstado("Error de conexión con TagoIO", false);
@@ -246,6 +255,15 @@ async function cargarDatos() {
 // ==========================================================
 document.addEventListener("DOMContentLoaded", () => {
   inicializarMapa();
+
+  // Primera carga
   cargarDatos();
+
+  // Actualización periódica
   setInterval(cargarDatos, UPDATE_INTERVAL);
+
+  // Asegurar render correcto del mapa
+  setTimeout(() => {
+    if (map) map.invalidateSize();
+  }, 500);
 });
