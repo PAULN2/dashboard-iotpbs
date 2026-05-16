@@ -166,11 +166,10 @@ function actualizarMapa(lat, lng) {
 // ----------------------------------------------------------
 // Cargar datos desde Worker
 // ----------------------------------------------------------
+// Reemplaza TODA tu función cargarDatos() por esta versión
+
 async function cargarDatos() {
   try {
-    // ------------------------------------------------------
-    // Estado inicial
-    // ------------------------------------------------------
     actualizarEstado("Conectando con TagoIO...", true);
 
     // ------------------------------------------------------
@@ -188,7 +187,7 @@ async function cargarDatos() {
     const raw = await response.json();
 
     // ------------------------------------------------------
-    // Detectar formato de respuesta
+    // Normalizar respuesta
     // ------------------------------------------------------
     let arrayDatos = [];
 
@@ -197,43 +196,63 @@ async function cargarDatos() {
     } else if (raw && Array.isArray(raw.result)) {
       arrayDatos = raw.result;
     } else {
-      console.error("Respuesta recibida:", raw);
       throw new Error("Formato de respuesta no válido");
     }
 
+    console.log("Datos recibidos:", arrayDatos);
+
     // ------------------------------------------------------
-    // Convertir array en objeto { variable: valor }
+    // Convertir a objeto { variable: valor }
     // ------------------------------------------------------
     const datos = convertirDatos(arrayDatos);
 
-    console.log("Datos procesados:", datos);
+    console.log("Datos convertidos:", datos);
 
     // ======================================================
-    // UBICACIÓN GPS
+    // OBTENER LATITUD Y LONGITUD DIRECTAMENTE DEL JSON
+    // (más robusto que depender solo de convertirDatos)
     // ======================================================
     let lat = null;
     let lng = null;
 
-    // Prioridad 1: location procesado por convertirDatos()
+    // 1) Buscar variable "location"
+    const itemLocation = arrayDatos.find(
+      (item) => item && item.variable === "location"
+    );
+
     if (
-      datos.location &&
-      esNumeroValido(datos.location.lat) &&
-      esNumeroValido(datos.location.lng)
+      itemLocation &&
+      itemLocation.location &&
+      Array.isArray(itemLocation.location.coordinates) &&
+      itemLocation.location.coordinates.length >= 2
     ) {
-      lat = Number(datos.location.lat);
-      lng = Number(datos.location.lng);
+      // coordinates = [longitud, latitud]
+      lng = Number(itemLocation.location.coordinates[0]);
+      lat = Number(itemLocation.location.coordinates[1]);
     }
-    // Prioridad 2: variables latitud y longitud
-    else if (
-      esNumeroValido(datos.latitud) &&
-      esNumeroValido(datos.longitud)
+
+    // 2) Si no existe location, usar latitud y longitud individuales
+    if (
+      (lat === null || isNaN(lat)) &&
+      esNumeroValido(datos.latitud)
     ) {
       lat = Number(datos.latitud);
+    }
+
+    if (
+      (lng === null || isNaN(lng)) &&
+      esNumeroValido(datos.longitud)
+    ) {
       lng = Number(datos.longitud);
     }
 
-    // Mostrar coordenadas
-    if (lat !== null && lng !== null) {
+    // 3) Mostrar coordenadas
+    if (
+      lat !== null &&
+      lng !== null &&
+      !isNaN(lat) &&
+      !isNaN(lng)
+    ) {
       setValor("latitud", lat.toFixed(6));
       setValor("longitud", lng.toFixed(6));
       actualizarMapa(lat, lng);
@@ -244,86 +263,33 @@ async function cargarDatos() {
     }
 
     // ======================================================
-    // DATOS GPS
+    // MOSTRAR TODOS LOS DATOS DIRECTAMENTE
     // ======================================================
-    setValor(
-      "satelites",
-      esNumeroValido(datos.satelites)
-        ? Number(datos.satelites)
-        : "--"
-    );
 
-    setValor(
-      "hdop",
-      formatearNumero(datos.hdop, 2)
-    );
+    // GPS
+    setValor("satelites", datos.satelites);
+    setValor("hdop", formatearNumero(datos.hdop, 2));
+    setValor("altitud_gps", formatearNumero(datos.altitud_gps, 1), " m");
+    setValor("velocidad", formatearNumero(datos.velocidad, 2), " km/h");
 
-    setValor(
-      "altitud_gps",
-      formatearNumero(datos.altitud_gps, 1),
-      " m"
-    );
+    // BME680
+    setValor("temperatura", formatearNumero(datos.temperatura, 1), " °C");
+    setValor("humedad", formatearNumero(datos.humedad, 1), " %");
+    setValor("presion", formatearNumero(datos.presion, 1), " hPa");
+    setValor("gas_resist", formatearNumero(datos.gas_resist, 2), " kΩ");
+    setValor("altitud_bme", formatearNumero(datos.altitud_bme, 1), " m");
 
-    setValor(
-      "velocidad",
-      formatearNumero(datos.velocidad, 2),
-      " km/h"
-    );
+    // Hora Ecuador
+    setValor("hora_ecuador", datos.hora_ecuador);
 
     // ======================================================
-    // DATOS BME680
-    // ======================================================
-    setValor(
-      "temperatura",
-      formatearNumero(datos.temperatura, 1),
-      " °C"
-    );
-
-    setValor(
-      "humedad",
-      formatearNumero(datos.humedad, 1),
-      " %"
-    );
-
-    setValor(
-      "presion",
-      formatearNumero(datos.presion, 1),
-      " hPa"
-    );
-
-    setValor(
-      "gas_resist",
-      formatearNumero(datos.gas_resist, 2),
-      " kΩ"
-    );
-
-    setValor(
-      "altitud_bme",
-      formatearNumero(datos.altitud_bme, 1),
-      " m"
-    );
-
-    // ======================================================
-    // HORA ECUADOR
-    // ======================================================
-    setValor(
-      "hora_ecuador",
-      datos.hora_ecuador || "--"
-    );
-
-    // ======================================================
-    // ÚLTIMA ACTUALIZACIÓN
+    // Última actualización
     // ======================================================
     const lastUpdate = document.getElementById("last-update");
     if (lastUpdate) {
-      if (datos.hora_ecuador) {
-        lastUpdate.textContent =
-          "Última actualización: " + datos.hora_ecuador;
-      } else {
-        lastUpdate.textContent =
-          "Última actualización: " +
-          new Date().toLocaleTimeString("es-EC");
-      }
+      lastUpdate.textContent =
+        "Última actualización: " +
+        (datos.hora_ecuador || new Date().toLocaleTimeString("es-EC"));
     }
 
     // ======================================================
@@ -332,9 +298,6 @@ async function cargarDatos() {
     actualizarEstado("Conectado a TagoIO", true);
 
   } catch (error) {
-    // ======================================================
-    // Error
-    // ======================================================
     console.error("Error en cargarDatos():", error);
 
     actualizarEstado("Error de conexión con TagoIO", false);
@@ -345,46 +308,6 @@ async function cargarDatos() {
     }
   }
 }
-
-    // ------------------------------------------------------
-    // GPS
-    // ------------------------------------------------------
-    setValor("satelites", datos.satelites);
-    setValor("hdop", formatearNumero(datos.hdop, 2));
-    setValor("altitud_gps", formatearNumero(datos.altitud_gps, 1), " m");
-    setValor("velocidad", formatearNumero(datos.velocidad, 2), " km/h");
-
-    // ------------------------------------------------------
-    // BME680
-    // ------------------------------------------------------
-    setValor("temperatura", formatearNumero(datos.temperatura, 1), " °C");
-    setValor("humedad", formatearNumero(datos.humedad, 1), " %");
-    setValor("presion", formatearNumero(datos.presion, 1), " hPa");
-    setValor("gas_resist", formatearNumero(datos.gas_resist, 2), " kΩ");
-    setValor("altitud_bme", formatearNumero(datos.altitud_bme, 1), " m");
-
-    // ------------------------------------------------------
-    // Hora Ecuador
-    // ------------------------------------------------------
-    setValor("hora_ecuador", datos.hora_ecuador);
-
-    // ------------------------------------------------------
-    // Última actualización
-    // ------------------------------------------------------
-    const lastUpdate = document.getElementById("last-update");
-    if (lastUpdate) {
-      lastUpdate.textContent =
-        "Última actualización: " +
-        new Date().toLocaleTimeString("es-EC");
-    }
-
-    actualizarEstado("Conectado a TagoIO", true);
-  } catch (error) {
-    console.error("Error:", error);
-    actualizarEstado("Error de conexión con TagoIO", false);
-  }
-}
-
 // ----------------------------------------------------------
 // Inicio
 // ----------------------------------------------------------
